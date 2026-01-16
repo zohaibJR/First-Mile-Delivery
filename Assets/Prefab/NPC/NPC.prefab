@@ -2505,7 +2505,7 @@ GameObject:
   - component: {fileID: 2692980321991288621}
   - component: {fileID: 1235055211174725799}
   - component: {fileID: 1876627460094579672}
-  - component: {fileID: 7053631740047679897}
+  - component: {fileID: 9105499073505306833}
   m_Layer: 0
   m_Name: NPC
   m_TagString: Untagged
@@ -2602,7 +2602,7 @@ CapsuleCollider:
   m_Height: 1.8527639
   m_Direction: 1
   m_Center: {x: 0, y: 0.9057164, z: 0.13999999}
---- !u!114 &7053631740047679897
+--- !u!114 &9105499073505306833
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -2611,16 +2611,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 7851288591443035622}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4a2168f7a913db34eb824174ccf64860, type: 3}
+  m_Script: {fileID: 11500000, guid: a8ba43addde815b4482269a7021c99fb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  walkSpeed: 2
-  runSpeed: 5
-  roamRadius: 10
-  minDistance: 10
-  minWaitTime: 2
-  maxWaitTime: 5
-  sideWalkAreaIndex: 3
+  home: {fileID: 0}
+  timeOutside: 60
+  idleTimeRange: {x: 2, y: 5}
 --- !u!1 &7904603438218855451
 GameObject:
   m_ObjectHideFlags: 0
