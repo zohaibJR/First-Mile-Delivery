@@ -4,25 +4,40 @@ using System.Collections;
 
 public class NPC : MonoBehaviour
 {
-    [Header("Behavior")]
+    [Header("Home & Life")]
     public Transform home;
-    public float timeOutside = 60f;
+    public float minOutsideTime = 300f;
+    public float maxOutsideTime = 600f;
+    public Vector2 respawnDelay = new Vector2(1f, 5f);
+
+    [Header("Idle")]
     public Vector2 idleTimeRange = new Vector2(2f, 5f);
 
+    [Header("Movement")]
+    public float walkSpeed = 2f;
+    public float runSpeed = 4.5f;
+
+    [Header("Chance (%)")]
+    [Range(0, 100)] public float walkChance = 70f;
+    [Range(0, 100)] public float runChance = 25f;
+    [Range(0, 100)] public float idleChance = 5f;
+
     [Header("Animation Thresholds")]
-    public float walkSpeedThreshold = 0.1f; // Minimum agent speed to start walking
-    public float runSpeedThreshold = 3f;    // Speed to consider running
+    public float walkSpeedThreshold = 0.1f;
+    public float runSpeedThreshold = 3f;
 
     NavMeshAgent agent;
     Animator anim;
 
     float outsideTimer;
     float idleTimer;
+    float allowedOutsideTime;
 
     bool goingHome;
     bool isIdle;
 
     int sidewalkMask;
+    System.Action onDestroyed;
 
     void Awake()
     {
@@ -36,26 +51,25 @@ public class NPC : MonoBehaviour
             anim.applyRootMotion = false;
     }
 
-    public void Init(Transform homeTransform)
+    public void Init(Transform homeTransform, System.Action destroyedCallback)
     {
         home = homeTransform;
+        onDestroyed = destroyedCallback;
 
-        // Spawn EXACTLY at house position
         transform.position = home.position;
         agent.Warp(home.position);
-
         agent.isStopped = true;
 
-        Debug.Log(name + " SPAWNED at home");
+        allowedOutsideTime = Random.Range(minOutsideTime, maxOutsideTime);
+        outsideTimer = 0f;
 
-        // Wait 3 seconds, then start wandering
         StartCoroutine(StartAfterDelay(3f));
     }
 
     IEnumerator StartAfterDelay(float delay)
     {
         yield return new WaitForSeconds(delay);
-        StartIdle();
+        DecideNextAction();
     }
 
     void Update()
@@ -63,59 +77,54 @@ public class NPC : MonoBehaviour
         UpdateAnimation();
 
         if (!goingHome)
+        {
             outsideTimer += Time.deltaTime;
+            if (outsideTimer >= allowedOutsideTime)
+                GoHome();
+        }
 
         if (isIdle)
         {
             idleTimer -= Time.deltaTime;
             if (idleTimer <= 0f)
-            {
-                if (!goingHome)
-                    GoWander();
-            }
+                DecideNextAction();
             return;
-        }
-
-        if (!goingHome && outsideTimer >= timeOutside)
-        {
-            GoHome();
         }
 
         if (!agent.pathPending && agent.remainingDistance < 0.5f)
         {
-            StartIdle();
-        }
-    }
-
-    void UpdateAnimation()
-    {
-        if (anim == null) return;
-
-        float speed = agent.velocity.magnitude;
-
-        // Set animation bools based on speed and state
-        if (isIdle)
-        {
-            anim.SetBool("isWalking", false);
-            anim.SetBool("isRunning", false);
-        }
-        else
-        {
-            if (speed > runSpeedThreshold)
+            if (goingHome)
             {
-                anim.SetBool("isWalking", false);
-                anim.SetBool("isRunning", true);
-            }
-            else if (speed > walkSpeedThreshold)
-            {
-                anim.SetBool("isWalking", true);
-                anim.SetBool("isRunning", false);
+                onDestroyed?.Invoke();
+                Destroy(gameObject);
             }
             else
             {
-                anim.SetBool("isWalking", false);
-                anim.SetBool("isRunning", false);
+                DecideNextAction();
             }
+        }
+    }
+
+    void DecideNextAction()
+    {
+        isIdle = false;
+        agent.isStopped = false;
+
+        float roll = Random.Range(0f, 100f);
+
+        if (roll < idleChance)
+        {
+            StartIdle();
+        }
+        else if (roll < idleChance + walkChance)
+        {
+            agent.speed = walkSpeed;
+            WanderToNewPoint();
+        }
+        else
+        {
+            agent.speed = runSpeed;
+            WanderToNewPoint();
         }
     }
 
@@ -124,20 +133,12 @@ public class NPC : MonoBehaviour
         isIdle = true;
         agent.isStopped = true;
         idleTimer = Random.Range(idleTimeRange.x, idleTimeRange.y);
-
-        Debug.Log(name + " is IDLE for " + idleTimer.ToString("F1") + " seconds");
     }
 
-    void GoWander()
+    void WanderToNewPoint()
     {
-        isIdle = false;
-        goingHome = false;
-        agent.isStopped = false;
-
         Vector3 randomPoint = GetRandomSidewalkPoint();
         agent.SetDestination(randomPoint);
-
-        Debug.Log(name + " is WANDERING to " + randomPoint);
     }
 
     void GoHome()
@@ -145,37 +146,56 @@ public class NPC : MonoBehaviour
         goingHome = true;
         isIdle = false;
         agent.isStopped = false;
-
+        agent.speed = walkSpeed;
         agent.SetDestination(home.position);
+    }
 
-        Debug.Log(name + " is GOING HOME");
+    void UpdateAnimation()
+    {
+        if (anim == null) return;
+
+        float speed = agent.velocity.magnitude;
+
+        if (isIdle)
+        {
+            anim.SetBool("isWalking", false);
+            anim.SetBool("isRunning", false);
+        }
+        else if (speed > runSpeedThreshold)
+        {
+            anim.SetBool("isWalking", false);
+            anim.SetBool("isRunning", true);
+        }
+        else if (speed > walkSpeedThreshold)
+        {
+            anim.SetBool("isWalking", true);
+            anim.SetBool("isRunning", false);
+        }
+        else
+        {
+            anim.SetBool("isWalking", false);
+            anim.SetBool("isRunning", false);
+        }
     }
 
     Vector3 GetRandomSidewalkPoint()
     {
-        var triangulation = NavMesh.CalculateTriangulation();
+        var tri = NavMesh.CalculateTriangulation();
+        if (tri.indices.Length < 3) return transform.position;
 
-        if (triangulation.indices.Length < 3)
-            return transform.position;
+        int i = Random.Range(0, tri.indices.Length / 3) * 3;
 
-        int index = Random.Range(0, triangulation.indices.Length / 3) * 3;
-
-        Vector3 v1 = triangulation.vertices[triangulation.indices[index]];
-        Vector3 v2 = triangulation.vertices[triangulation.indices[index + 1]];
-        Vector3 v3 = triangulation.vertices[triangulation.indices[index + 2]];
+        Vector3 v1 = tri.vertices[tri.indices[i]];
+        Vector3 v2 = tri.vertices[tri.indices[i + 1]];
+        Vector3 v3 = tri.vertices[tri.indices[i + 2]];
 
         float r1 = Random.value;
         float r2 = Random.value;
+        if (r1 + r2 > 1f) { r1 = 1f - r1; r2 = 1f - r2; }
 
-        if (r1 + r2 > 1f)
-        {
-            r1 = 1f - r1;
-            r2 = 1f - r2;
-        }
+        Vector3 p = v1 + r1 * (v2 - v1) + r2 * (v3 - v1);
 
-        Vector3 randomPoint = v1 + r1 * (v2 - v1) + r2 * (v3 - v1);
-
-        if (NavMesh.SamplePosition(randomPoint, out NavMeshHit hit, 2f, sidewalkMask))
+        if (NavMesh.SamplePosition(p, out NavMeshHit hit, 2f, sidewalkMask))
             return hit.position;
 
         return transform.position;
